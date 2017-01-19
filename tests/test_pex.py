@@ -2,16 +2,28 @@
 # Licensed under the Apache License, Version 2.0 (see LICENSE).
 
 import os
+import sys
 import textwrap
 from types import ModuleType
 
 import pytest
 
-from pex.compatibility import to_bytes
+from pex.compatibility import WINDOWS, nested, to_bytes
 from pex.installer import EggInstaller, WheelInstaller
 from pex.pex import PEX
-from pex.testing import make_installer, run_simple_pex_test
+from pex.testing import (
+    make_installer,
+    named_temporary_file,
+    run_simple_pex_test,
+    temporary_dir,
+    write_simple_pex
+)
 from pex.util import DistributionHelper
+
+try:
+  from unittest import mock
+except ImportError:
+  import mock
 
 
 @pytest.mark.skipif('sys.version_info > (3,)')
@@ -119,6 +131,60 @@ def test_minimum_sys_modules():
   assert new_modules == modules
   assert tainted_module.__path__ == ['good_path']
 
+  # If __path__ is not a list the module is removed; typically this implies
+  # it's a namespace package (https://www.python.org/dev/peps/pep-0420/) where
+  # __path__ is a _NamespacePath.
+  try:
+    from importlib._bootstrap_external import _NamespacePath
+    bad_path = _NamespacePath("hello", "world", None)
+  except ImportError:
+    bad_path = {"hello": "world"}
+  class FakeModule(object):
+    pass
+  tainted_module = FakeModule()
+  tainted_module.__path__ = bad_path   # Not a list as expected
+  modules = {'tainted_module': tainted_module}
+  new_modules = PEX.minimum_sys_modules(['bad_path'], modules)
+  assert new_modules == {}
+
+
+def test_site_libs():
+  with nested(mock.patch.object(PEX, '_get_site_packages'), temporary_dir()) as (
+          mock_site_packages, tempdir):
+    site_packages = os.path.join(tempdir, 'site-packages')
+    os.mkdir(site_packages)
+    mock_site_packages.return_value = set([site_packages])
+    site_libs = PEX.site_libs()
+    assert site_packages in site_libs
+
+
+@pytest.mark.skipif(WINDOWS, reason='No symlinks on windows')
+def test_site_libs_symlink():
+  with nested(mock.patch.object(PEX, '_get_site_packages'), temporary_dir()) as (
+          mock_site_packages, tempdir):
+    site_packages = os.path.join(tempdir, 'site-packages')
+    os.mkdir(site_packages)
+    site_packages_link = os.path.join(tempdir, 'site-packages-link')
+    os.symlink(site_packages, site_packages_link)
+    mock_site_packages.return_value = set([site_packages_link])
+
+    site_libs = PEX.site_libs()
+    assert os.path.realpath(site_packages) in site_libs
+    assert site_packages_link in site_libs
+
+
+def test_site_libs_excludes_prefix():
+  """Windows returns sys.prefix as part of getsitepackages(). Make sure to exclude it."""
+
+  with nested(mock.patch.object(PEX, '_get_site_packages'), temporary_dir()) as (
+          mock_site_packages, tempdir):
+    site_packages = os.path.join(tempdir, 'site-packages')
+    os.mkdir(site_packages)
+    mock_site_packages.return_value = set([site_packages, sys.prefix])
+    site_libs = PEX.site_libs()
+    assert site_packages in site_libs
+    assert sys.prefix not in site_libs
+
 
 @pytest.mark.parametrize('zip_safe', (False, True))
 @pytest.mark.parametrize('project_name', ('my_project', 'my-project'))
@@ -142,3 +208,49 @@ def test_pex_script(installer_impl, project_name, zip_safe):
     so, rc = run_simple_pex_test('', env=env_copy, dists=[bdist])
     assert rc == 1, so.decode('utf-8')
     assert b'Unable to parse' in so
+
+
+def test_pex_run():
+  with named_temporary_file() as fake_stdout:
+    with temporary_dir() as temp_dir:
+      pex = write_simple_pex(
+        temp_dir,
+        'import sys; sys.stdout.write("hello"); sys.stderr.write("hello"); sys.exit(0)'
+      )
+      rc = PEX(pex.path()).run(stdin=None, stdout=fake_stdout, stderr=fake_stdout)
+      assert rc == 0
+
+      fake_stdout.seek(0)
+      assert fake_stdout.read() == b'hellohello'
+
+
+def test_pex_paths():
+  # Tests that PEX_PATH allows importing sources from the referenced pex.
+  with named_temporary_file() as fake_stdout:
+    with temporary_dir() as temp_dir:
+      pex1_path = os.path.join(temp_dir, 'pex1')
+      write_simple_pex(
+        pex1_path,
+        exe_contents='',
+        sources=[
+          ('foo_pkg/__init__.py', ''),
+          ('foo_pkg/foo_module.py', 'def foo_func():\n  return "42"')
+        ]
+      )
+
+      pex2_path = os.path.join(temp_dir, 'pex2')
+      pex2 = write_simple_pex(
+        pex2_path,
+        'import sys; from bar_pkg.bar_module import bar_func; '
+        'sys.stdout.write(bar_func()); sys.exit(0)',
+        sources=[
+          ('bar_pkg/bar_module.py',
+           'from foo_pkg.foo_module import foo_func\ndef bar_func():\n  return foo_func()')
+        ]
+      )
+
+      rc = PEX(pex2.path()).run(stdin=None, stdout=fake_stdout, env={'PEX_PATH': pex1_path})
+      assert rc == 0
+
+      fake_stdout.seek(0)
+      assert fake_stdout.read() == b'42'

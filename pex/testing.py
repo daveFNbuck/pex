@@ -4,16 +4,19 @@
 import contextlib
 import os
 import random
-import subprocess
+import sys
 import tempfile
 import zipfile
+from collections import namedtuple
 from textwrap import dedent
 
+from .bin.pex import log, main
 from .common import safe_mkdir, safe_rmtree
 from .compatibility import nested
+from .executor import Executor
 from .installer import EggInstaller, Packager
 from .pex_builder import PEXBuilder
-from .util import DistributionHelper
+from .util import DistributionHelper, named_temporary_file
 
 
 @contextlib.contextmanager
@@ -23,6 +26,19 @@ def temporary_dir():
     yield td
   finally:
     safe_rmtree(td)
+
+
+@contextlib.contextmanager
+def temporary_filename():
+  """Creates a temporary filename.
+
+  This is useful when you need to pass a filename to an API. Windows requires all
+  handles to a file be closed before deleting/renaming it, so this makes it a bit
+  simpler."""
+  with named_temporary_file() as fp:
+    fp.write(b'')
+    fp.close()
+    yield fp.name
 
 
 def random_bytes(length):
@@ -134,16 +150,20 @@ except ImportError:
 """
 
 
-def write_simple_pex(td, exe_contents, dists=None, coverage=False):
+def write_simple_pex(td, exe_contents, dists=None, sources=None, coverage=False):
   """Write a pex file that contains an executable entry point
 
   :param td: temporary directory path
   :param exe_contents: entry point python file
   :type exe_contents: string
   :param dists: distributions to include, typically sdists or bdists
+  :param sources: sources to include, as a list of pairs (env_filename, contents)
   :param coverage: include coverage header
   """
   dists = dists or []
+  sources = sources or []
+
+  safe_mkdir(td)
 
   with open(os.path.join(td, 'exe.py'), 'w') as fp:
     fp.write(exe_contents)
@@ -153,21 +173,60 @@ def write_simple_pex(td, exe_contents, dists=None, coverage=False):
   for dist in dists:
     pb.add_egg(dist.location)
 
+  for env_filename, contents in sources:
+    src_path = os.path.join(td, env_filename)
+    safe_mkdir(os.path.dirname(src_path))
+    with open(src_path, 'w') as fp:
+      fp.write(contents)
+    pb.add_source(src_path, env_filename)
+
   pb.set_executable(os.path.join(td, 'exe.py'))
   pb.freeze()
 
   return pb
 
 
+class IntegResults(namedtuple('results', 'output return_code exception')):
+  """Convenience object to return integration run results."""
+
+  def assert_success(self):
+    assert self.exception is None and self.return_code is None
+
+  def assert_failure(self):
+    assert self.exception or self.return_code
+
+
+def run_pex_command(args, env=None):
+  """Simulate running pex command for integration testing.
+
+  This is different from run_simple_pex in that it calls the pex command rather
+  than running a generated pex.  This is useful for testing end to end runs
+  with specific command line arguments or env options.
+  """
+  def logger_callback(_output):
+    def mock_logger(msg, v=None):
+      _output.append(msg)
+
+    return mock_logger
+
+  exception = None
+  error_code = None
+  output = []
+  log.set_logger(logger_callback(output))
+  try:
+    main(args=args)
+  except SystemExit as e:
+    error_code = e.code
+  except Exception as e:
+    exception = e
+  return IntegResults(output, error_code, exception)
+
+
 # TODO(wickman) Why not PEX.run?
-def run_simple_pex(pex, args=(), env=None):
-  po = subprocess.Popen(
-      [pex] + list(args),
-      stdout=subprocess.PIPE,
-      stderr=subprocess.STDOUT,
-      env=env)
-  po.wait()
-  return po.stdout.read(), po.returncode
+def run_simple_pex(pex, args=(), env=None, stdin=None):
+  process = Executor.open_process([sys.executable, pex] + list(args), env=env, combined=True)
+  stdout, _ = process.communicate(input=stdin)
+  return stdout.replace(b'\r', b''), process.returncode
 
 
 def run_simple_pex_test(body, args=(), env=None, dists=None, coverage=False):

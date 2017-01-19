@@ -1,8 +1,200 @@
-=======
-CHANGES
-=======
+Release Notes
+=============
 
+1.1.20
+------
+
+* Add dummy flush method for clean interpreter exit with python3.6 (#343)
+  `#343 <https://github.com/pantsbuild/pex/pull/343>`_
+
+1.1.19
+------
+
+* Implement --constraints in pex (#335)
+  `#335 <https://github.com/pantsbuild/pex/pull/335>`_
+
+* Make sure namespace packages (e.g. virtualenvwrapper) don't break pex (#338)
+  `#338 <https://github.com/pantsbuild/pex/pull/338>`_
+
+1.1.18
+------
+
+* Expose a PEX instance's path. (#332)
+  `#332 <https://github.com/pantsbuild/pex/pull/332>`_
+
+* Check for scripts directory in get_script_from_egg (#328)
+  `#328 <https://github.com/pantsbuild/pex/pull/328>`_
+
+1.1.17
+------
+
+* Make PEX_PATH unify pex sources, as well as requirements. (#329)
+  `#329 <https://github.com/pantsbuild/pex/pull/329>`_
+
+1.1.16
+------
+
+* Adjust FileFinder import to work with Python 3.6. (#318)
+  `#318 <https://github.com/pantsbuild/pex/pull/318>`_
+
+* Kill zipmanifest monkeypatching. (#322)
+  `#322 <https://github.com/pantsbuild/pex/pull/322>`_
+
+* Bump setuptools range to latest. (#323)
+  `#323 <https://github.com/pantsbuild/pex/pull/323>`_
+
+1.1.15
+------
+
+* Fix #309 by deduplicating output of the distribution finder. (#310)
+  `#310 <https://github.com/pantsbuild/pex/pull/310>`_
+
+* Update wheel dependency to >0.26.0. (#304)
+  `#304 <https://github.com/pantsbuild/pex/pull/304>`_
+
+1.1.14
+------
+
+* Repair Executor error handling for other classes of IOError/OSError. (#292)
+  `#292 <https://github.com/pantsbuild/pex/pull/292>`_
+
+* Fix bdist_pex --pex-args. (#285)
+  `#285 <https://github.com/pantsbuild/pex/pull/285>`_
+
+* Inherit user site with --inherit-path. (#284)
+  `#284 <https://github.com/pantsbuild/pex/pull/284>`_
+
+1.1.13
+------
+
+* Repair passing of stdio kwargs to PEX.run(). (#288)
+  `#288 <https://github.com/pantsbuild/pex/pull/288>`_
+
+1.1.12
+------
+
+* Fix bdist_pex interpreter cache directory. (#286)
+  `#286 <https://github.com/pantsbuild/pex/pull/286>`_
+
+* Normalize and edify subprocess execution. (#255)
+  `#255 <https://github.com/pantsbuild/pex/pull/255>`_
+
+* Don't ignore exit codes when using setuptools entry points. (#280)
+  `#280 <https://github.com/pantsbuild/pex/pull/280>`_
+  `Fixes #137 <https://github.com/pantsbuild/pex/issues/137>`_
+
+1.1.11
+------
+
+* Update cache dir when bdist_pex.run is called directly.
+  `#278 <https://github.com/pantsbuild/pex/pull/278>`_
+  `Fixes #274 <https://github.com/pantsbuild/pex/issues/274>`_
+
+1.1.10
+------
+
+* Improve failure modes for os.rename() as used in distribution caching.
+  `#271 <https://github.com/pantsbuild/pex/pull/271>`_
+  `Fixes #265 <https://github.com/pantsbuild/pex/issues/265>`_
+
+1.1.9
 -----
+
+* Bugfix: Open setup.py in binary mode.
+  `#264 <https://github.com/pantsbuild/pex/pull/264>`_
+  `Fixes #263 <https://github.com/pantsbuild/pex/issues/263>`_
+
+1.1.8
+-----
+
+* Bugfix: Repair a regression in `--disable-cache`.
+  `#261 <https://github.com/pantsbuild/pex/pull/261>`_
+  `Fixes #260 <https://github.com/pantsbuild/pex/issues/260>`_
+
+1.1.7
+-----
+
+* Add README and supported python versions to PyPI description.
+  `#258 <https://github.com/pantsbuild/pex/pull/258>`_
+
+* Use `open` with utf-8 support.
+  `#231 <https://github.com/pantsbuild/pex/pull/231>`_
+
+* Add `--pex-root` option.
+  `#206 <https://github.com/pantsbuild/pex/pull/206>`_
+
+1.1.6
+-----
+
+This release is a quick fix for a regression that inadvertently went out in 1.1.5 (Issue #243).
+
+* Fix the ``bdist_pex`` ``setuptools`` command to work for python2.
+  `#246 <https://github.com/pantsbuild/pex/pull/246>`_
+  `Fixes #243 <https://github.com/pantsbuild/pex/issues/243>`_
+
+* Upgrade pex dependencies on ``setuptools`` and ``wheel``.
+  `#244 <https://github.com/pantsbuild/pex/pull/244>`_
+  `Fixes #238 <https://github.com/pantsbuild/pex/issues/238>`_
+
+1.1.5
+-----
+
+* Fix ``PEXBuilder.clone`` and thus ``bdist_pex --pex-args`` for ``--python`` and ``--python-shebang``.
+  `#234 <https://github.com/pantsbuild/pex/pull/234>`_
+  `Fixes #233 <https://github.com/pantsbuild/pex/issues/233>`_
+
+* Fix old ``pkg_resources`` egg version normalization.
+  `#227 <https://github.com/pantsbuild/pex/pull/227>`_
+  `Fixes #226 <https://github.com/pantsbuild/pex/issues/226>`_
+
+* Fix the ``inherit_path`` handling.
+  `#224 <https://github.com/pantsbuild/pex/pull/224>`_
+
+* Fix handling of bad distribution script names when used as the pex entrypoint.
+  `#221 <https://github.com/pantsbuild/pex/issues/221>`_
+  `Fixes #220 <https://github.com/pantsbuild/pex/issues/220>`_
+
+1.1.4
+-----
+
+This release is a quick fix for a regression that inadvertently went out in 1.1.3 (Issue #216).
+
+* Add a test for the regression in ``FixedEggMetadata._zipinfo_name`` and revert the breaking commit.
+  `Fixes #216 <https://github.com/pantsbuild/pex/issues/216>`_
+
+1.1.3
+-----
+
+This release includes an initial body of work towards Windows support, ABI tag support for CPython 2.x and a fix for version number normalization.
+
+* Add python 2.x abi tag support.
+  `#214 <https://github.com/pantsbuild/pex/pull/214>`_
+  `Fixes #213 <https://github.com/pantsbuild/pex/issues/213>`_
+
+* Add .idea to .gitignore.
+  `#205 <https://github.com/pantsbuild/pex/pull/205>`_
+
+* Don't normalize version numbers as names.
+  `#204 <https://github.com/pantsbuild/pex/pull/204>`_
+
+* More fixes for windows.
+  `#202 <https://github.com/pantsbuild/pex/pull/202>`_
+
+* Fixes to get pex to work on windows.
+  `#198 <https://github.com/pantsbuild/pex/pull/198>`_
+
+1.1.2
+-----
+
+* Bump setuptools & wheel version pinning.
+  `#194 <https://github.com/pantsbuild/pex/pull/194>`_
+
+* Unescape html in PageParser.href_match_to_url.
+  `#191 <https://github.com/pantsbuild/pex/pull/191>`_
+
+* Memoize calls to Crawler.crawl() for performance win in find-links based resolution.
+  `#187 <https://github.com/pantsbuild/pex/pull/187>`_
+
 1.1.1
 -----
 
@@ -15,7 +207,6 @@ CHANGES
 * Improve error messaging for platform constrained Untranslateable errors.
   `#179 <https://github.com/pantsbuild/pex/pull/179>`_
 
------
 1.1.0
 -----
 
@@ -35,7 +226,6 @@ CHANGES
 
 * Adds a pex-identifying User-Agent. `#101 <https://github.com/pantsbuild/pex/issues/101>`_.
 
------
 1.0.3
 -----
 
@@ -50,7 +240,6 @@ CHANGES
 * Bug fix: ``sys.exit`` called without arguments would cause `None` to be printed on stderr since pex 1.0.1.
   `#143 <https://github.com/pantsbuild/pex/pull/143>`_.
 
------
 1.0.2
 -----
 
@@ -66,7 +255,6 @@ CHANGES
   teardown hooks behave more predictably.
   Fixes `#141 <https://github.com/pantsbuild/pex/issues/141>`_.
 
------
 1.0.1
 -----
 
@@ -80,7 +268,6 @@ CHANGES
 * Bug fix: Fix complex resolutions when using a cache.
   Fixes: `#120 <https://github.com/pantsbuild/pex/issues/120>`_.
 
------
 1.0.0
 -----
 
@@ -147,7 +334,6 @@ For users of the PEX CLI, major version ranges such as ``pex>=1,<2`` should be s
 * Bug fix: Fixes caching in the PEX tool since we don't cache the source distributions of installable
   directories.  `#24 <https://github.com/pantsbuild/pex/issues/24>`_.
 
------
 0.9.0
 -----
 
@@ -169,7 +355,6 @@ This is the last release before the 1.0.0 development branch is started.
   Implements `#47 <https://github.com/pantsbuild/pex/issues/47>`_ in order to
   fix `#48 <https://github.com/pantsbuild/pex/issues/48>`_
 
------
 0.8.6
 -----
 
@@ -179,14 +364,12 @@ This is the last release before the 1.0.0 development branch is started.
 * Bug fix: ``UrllibContext`` used ``replace`` as a keyword argument for ``bytes.decode``
   but this only works on Python 3.  `Pull Request #46 <https://github.com/pantsbuild/pex/pull/46>`_
 
------
 0.8.5
 -----
 
 * Bug fix: Fixup string formatting in pex/bin/pex.py to support Python 2.6
   `Pull Request #40 <https://github.com/pantsbuild/pex/pull/40>`_
 
------
 0.8.4
 -----
 
@@ -205,7 +388,6 @@ This is the last release before the 1.0.0 development branch is started.
   compatibility.
   `Pull Request #33 <https://github.com/pantsbuild/pex/pull/33>`_
 
------
 0.8.3
 -----
 
@@ -214,7 +396,6 @@ This is the last release before the 1.0.0 development branch is started.
   number of non-zip-safe dependencies.
   `RB #1642 <https://rbcommons.com/s/twitter/r/1642>`_
 
------
 0.8.2
 -----
 
@@ -224,14 +405,12 @@ This is the last release before the 1.0.0 development branch is started.
 * Pin pex to setuptools prior to 9.x until we have a chance to make changes
   related to PEP440 and the change of pkg_resources.py to a package.
 
------
 0.8.1
 -----
 
 * Bug fix: Fix issue where it'd be possible to ``os.path.getmtime`` on a remote ``Link`` object
   `Issue #29 <https://github.com/pantsbuild/pex/issues/29>`_
 
------
 0.8.0
 -----
 
@@ -280,21 +459,18 @@ This is the last release before the 1.0.0 development branch is started.
   an encoding issue only experienced when using Python 3.
   `Issue #10 <https://github.com/pantsbuild/pex/issues/10>`_
 
------
 0.7.0
 -----
 
 * Rename ``twitter.common.python`` to ``pex`` and split out from the
   `twitter/commons <http://github.com/twitter/commons>`_ repo.
 
------
 0.6.0
 -----
 
 * Change the interpretation of ``-i`` (and of PyPIFetcher's pypi_base)
   to match pip's ``-i``.  This is useful for compatibility with devpi.
 
-------
 0.5.10
 ------
 
@@ -306,7 +482,6 @@ This is the last release before the 1.0.0 development branch is started.
   never be used again, and builds would re-create the same distributions
   in tmpdirs over and over again.
 
------
 0.5.9
 -----
 
@@ -319,13 +494,11 @@ This is the last release before the 1.0.0 development branch is started.
   changed a runtime error would be thrown due to seemingly corrupt zip file
   offsets. `RB #684 <https://rbcommons.com/s/twitter/r/684/>`_
 
------
 0.5.8
 -----
 
 * Adds ``-i/--index`` option to the pex tool.
 
------
 0.5.7
 -----
 
@@ -336,7 +509,6 @@ This is the last release before the 1.0.0 development branch is started.
 * Adds stdin=,stdout=,stderr= keyword parameters to the ``PEX.run`` function.
   (Patch from @benjy)
 
------
 0.5.6
 -----
 
@@ -344,14 +516,12 @@ This is the last release before the 1.0.0 development branch is started.
   (Before the default behavior was to implicitly ``--follow-links`` for all
   requirements.) `RB #293 <https://rbcommons.com/s/twitter/r/293/>`_
 
------
 0.5.5
 -----
 
 * Improves scrubbing of site-packages from PEX environments.
   `RB #289 <https://rbcommons.com/s/twitter/r/289/>`_
 
--------------
 0.5.1 - 0.5.4
 -------------
 
@@ -363,7 +533,6 @@ This is the last release before the 1.0.0 development branch is started.
 * Adds ``__hash__`` to ``Link`` so that Packages are hashed correctly in
   ``twitter.common.python.resolver`` ``resolve``
 
------
 0.5.0
 -----
 
@@ -372,7 +541,6 @@ This is the last release before the 1.0.0 development branch is started.
   `RB #154 <https://rbcommons.com/s/twitter/r/154/>`_
   `RB #148 <https://rbcommons.com/s/twitter/r/148/>`_
 
------
 0.4.3
 -----
 
@@ -412,26 +580,22 @@ This is the last release before the 1.0.0 development branch is started.
 * Bug fix: Raise a ``RuntimeError`` if we fail to write ``pkg_resources`` into a .pex
   `RB #115 <https://rbcommons.com/s/twitter/r/115/>`_
 
------
 0.4.2
 -----
 
 * Upgrade to ``setuptools>=1``
 
------
 0.4.1
 -----
 
 * ``twitter.common.python`` is no longer a namespace package
 
------
 0.4.0
 -----
 
 * Kill the egg distiller.  We now delegate .egg generation to bdist_egg.
   `RB #55 <https://rbcommons.com/s/twitter/r/55/>`_
 
------
 0.3.1
 -----
 
@@ -445,7 +609,6 @@ This is the last release before the 1.0.0 development branch is started.
   `Setuptools Issue #154 <https://bitbucket.org/pypa/setuptools/issue/154/build_zipmanifest-results-should-be>`_
   `RB #53 <https://rbcommons.com/s/twitter/r/53/>`_
 
------
 0.3.0
 -----
 
@@ -488,33 +651,28 @@ This is the last release before the 1.0.0 development branch is started.
 * Bug fix: Handle setuptools>=2.1 correctly in the zipimport monkeypatch
   (Patch from @johnsirois.)
 
------
 0.2.3
 -----
 
 * Bug fix: Fix handling of Fetchers with ``file://`` urls.
 
------
 0.2.2
 -----
 
 * Adds the pex tool as a standalone tool.
 
------
 0.2.1
 -----
 
 * Bug fix: Bootstrapped ``twitter.common.python`` should declare ``twitter.common``
   as a namespace package.
 
------
 0.2.0
 -----
 
 * Make ``twitter.common.python`` fully standalone by consolidating
   external dependencies within ``twitter.common.python.common``.
 
------
 0.1.0
 -----
 

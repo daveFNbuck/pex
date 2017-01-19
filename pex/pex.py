@@ -4,7 +4,6 @@
 from __future__ import absolute_import, print_function
 
 import os
-import subprocess
 import sys
 from contextlib import contextmanager
 from distutils import sysconfig
@@ -16,6 +15,7 @@ from pkg_resources import EntryPoint, WorkingSet, find_distributions
 from .common import die
 from .compatibility import exec_function
 from .environment import PEXEnvironment
+from .executor import Executor
 from .finders import get_entry_point_from_console_script, get_script_from_distributions
 from .interpreter import PythonInterpreter
 from .orderedset import OrderedSet
@@ -29,6 +29,9 @@ class DevNull(object):
     pass
 
   def write(self, *args, **kw):
+    pass
+
+  def flush(self):
     pass
 
 
@@ -96,14 +99,21 @@ class PEX(object):  # noqa: T000
       yield os.path.join(standard_lib, path)
 
   @classmethod
-  def _site_libs(cls):
+  def _get_site_packages(cls):
     try:
       from site import getsitepackages
-      site_libs = set(getsitepackages())
+      return set(getsitepackages())
     except ImportError:
-      site_libs = set()
+      return set()
+
+  @classmethod
+  def site_libs(cls):
+    site_libs = cls._get_site_packages()
     site_libs.update([sysconfig.get_python_lib(plat_specific=False),
                       sysconfig.get_python_lib(plat_specific=True)])
+    # On windows getsitepackages() returns the python stdlib too.
+    if sys.prefix in site_libs:
+      site_libs.remove(sys.prefix)
     real_site_libs = set(os.path.realpath(path) for path in site_libs)
     return site_libs | real_site_libs
 
@@ -134,6 +144,11 @@ class PEX(object):  # noqa: T000
         new_modules[module_name] = module
         continue
 
+      # Unexpected objects, e.g. namespace packages, should just be dropped:
+      if not isinstance(module.__path__, list):
+        TRACER.log('Dropping %s' % (module_name,), V=3)
+        continue
+
       # Pop off site-impacting __path__ elements in-place.
       for k in reversed(range(len(module.__path__))):
         if cls._tainted_path(module.__path__[k], site_libs):
@@ -147,7 +162,8 @@ class PEX(object):  # noqa: T000
     return new_modules
 
   @classmethod
-  def minimum_sys_path(cls, site_libs):
+  def minimum_sys_path(cls, site_libs, inherit_path):
+    scrub_paths = OrderedSet()
     site_distributions = OrderedSet()
     user_site_distributions = OrderedSet()
 
@@ -164,13 +180,13 @@ class PEX(object):  # noqa: T000
 
     user_site_distributions.update(all_distribution_paths(USER_SITE))
 
-    for path in site_distributions:
-      TRACER.log('Scrubbing from site-packages: %s' % path)
+    if not inherit_path:
+      scrub_paths = site_distributions | user_site_distributions
+      for path in user_site_distributions:
+        TRACER.log('Scrubbing from user site: %s' % path)
+      for path in site_distributions:
+        TRACER.log('Scrubbing from site-packages: %s' % path)
 
-    for path in user_site_distributions:
-      TRACER.log('Scrubbing from user site: %s' % path)
-
-    scrub_paths = site_distributions | user_site_distributions
     scrubbed_sys_path = list(OrderedSet(sys.path) - scrub_paths)
     scrub_from_importer_cache = filter(
       lambda key: any(key.startswith(path) for path in scrub_paths),
@@ -184,13 +200,13 @@ class PEX(object):  # noqa: T000
     return scrubbed_sys_path, scrubbed_importer_cache
 
   @classmethod
-  def minimum_sys(cls):
+  def minimum_sys(cls, inherit_path):
     """Return the minimum sys necessary to run this interpreter, a la python -S.
 
     :returns: (sys.path, sys.path_importer_cache, sys.modules) tuple of a
       bare python installation.
     """
-    site_libs = set(cls._site_libs())
+    site_libs = set(cls.site_libs())
     for site_lib in site_libs:
       TRACER.log('Found site-library: %s' % site_lib)
     for extras_path in cls._extras_paths():
@@ -198,7 +214,7 @@ class PEX(object):  # noqa: T000
       site_libs.add(extras_path)
     site_libs = set(os.path.normpath(path) for path in site_libs)
 
-    sys_path, sys_path_importer_cache = cls.minimum_sys_path(site_libs)
+    sys_path, sys_path_importer_cache = cls.minimum_sys_path(site_libs, inherit_path)
     sys_modules = cls.minimum_sys_modules(site_libs)
 
     return sys_path, sys_path_importer_cache, sys_modules
@@ -225,9 +241,8 @@ class PEX(object):  # noqa: T000
   # potentially in a wonky state since the patches here (minimum_sys_modules
   # for example) actually mutate global state.  This should not be
   # considered a reversible operation despite being a contextmanager.
-  @classmethod
   @contextmanager
-  def patch_sys(cls):
+  def patch_sys(self, inherit_path):
     """Patch sys with all site scrubbed."""
     def patch_dict(old_value, new_value):
       old_value.clear()
@@ -240,7 +255,9 @@ class PEX(object):  # noqa: T000
 
     old_sys_path, old_sys_path_importer_cache, old_sys_modules = (
         sys.path[:], sys.path_importer_cache.copy(), sys.modules.copy())
-    new_sys_path, new_sys_path_importer_cache, new_sys_modules = cls.minimum_sys()
+    new_sys_path, new_sys_path_importer_cache, new_sys_modules = self.minimum_sys(inherit_path)
+
+    new_sys_path.extend(filter(None, self._vars.PEX_PATH.split(os.pathsep)))
 
     patch_all(new_sys_path, new_sys_path_importer_cache, new_sys_modules)
     yield
@@ -299,6 +316,10 @@ class PEX(object):  # noqa: T000
       else:
         profiler.print_stats(sort=pex_profile_sort)
 
+  def path(self):
+    """Return the path this PEX was built at."""
+    return self._pex
+
   def execute(self):
     """Execute the PEX.
 
@@ -307,7 +328,8 @@ class PEX(object):  # noqa: T000
     """
     teardown_verbosity = self._vars.PEX_TEARDOWN_VERBOSE
     try:
-      with self.patch_sys():
+      pex_inherit_path = self._vars.PEX_INHERIT_PATH or self._pex_info.inherit_path
+      with self.patch_sys(pex_inherit_path):
         working_set = self._activate()
         TRACER.log('PYTHONPATH contains:')
         for element in sys.path:
@@ -380,7 +402,7 @@ class PEX(object):  # noqa: T000
 
     entry_point = get_entry_point_from_console_script(script_name, dists)
     if entry_point:
-      return self.execute_entry(entry_point)
+      sys.exit(self.execute_entry(entry_point))
 
     dist, script_path, script_content = get_script_from_distributions(script_name, dists)
     if not dist:
@@ -415,7 +437,7 @@ class PEX(object):  # noqa: T000
   @classmethod
   def execute_entry(cls, entry_point):
     runner = cls.execute_pkg_resources if ':' in entry_point else cls.execute_module
-    runner(entry_point)
+    return runner(entry_point)
 
   @staticmethod
   def execute_module(module_name):
@@ -433,7 +455,7 @@ class PEX(object):  # noqa: T000
     else:
       # setuptools < 11.3
       runner = entry.load(require=False)
-    runner()
+    return runner()
 
   def cmdline(self, args=()):
     """The commandline to run this environment.
@@ -446,7 +468,7 @@ class PEX(object):  # noqa: T000
     cmds.extend(args)
     return cmds
 
-  def run(self, args=(), with_chroot=False, blocking=True, setsid=False, **kw):
+  def run(self, args=(), with_chroot=False, blocking=True, setsid=False, **kwargs):
     """Run the PythonEnvironment in an interpreter in a subprocess.
 
     :keyword args: Additional arguments to be passed to the application being invoked by the
@@ -462,9 +484,11 @@ class PEX(object):  # noqa: T000
 
     cmdline = self.cmdline(args)
     TRACER.log('PEX.run invoking %s' % ' '.join(cmdline))
-    process = subprocess.Popen(
-        cmdline,
-        cwd=self._pex if with_chroot else os.getcwd(),
-        preexec_fn=os.setsid if setsid else None,
-        **kw)
+    process = Executor.open_process(cmdline,
+                                    cwd=self._pex if with_chroot else os.getcwd(),
+                                    preexec_fn=os.setsid if setsid else None,
+                                    stdin=kwargs.pop('stdin', None),
+                                    stdout=kwargs.pop('stdout', None),
+                                    stderr=kwargs.pop('stderr', None),
+                                    **kwargs)
     return process.wait() if blocking else process

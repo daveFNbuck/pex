@@ -4,7 +4,7 @@
 import pytest
 from pkg_resources import Requirement, parse_version
 
-from pex.package import EggPackage, SourcePackage
+from pex.package import EggPackage, SourcePackage, WheelPackage
 
 
 def test_source_packages():
@@ -24,6 +24,15 @@ def test_source_packages():
   assert sl.raw_version == '1.5'
 
 
+def test_local_specifier():
+  for ext in ('.tar.gz', '.tar', '.tgz', '.zip', '.tar.bz2'):
+    sl = SourcePackage('a_p_r-3.1.3+pexed.1' + ext)
+    assert sl.name == 'a-p-r'
+    assert sl.raw_version == '3.1.3+pexed.1'
+    assert sl.version == parse_version(sl.raw_version)
+    assert sl.satisfies('a_p_r==3.1.3+pexed.1')
+
+
 def test_egg_packages():
   el = EggPackage('psutil-0.4.1-py2.6-macosx-10.7-intel.egg')
   assert el.name == 'psutil'
@@ -35,9 +44,18 @@ def test_egg_packages():
   for req in ('foo', 'bar==0.4.1'):
     assert not el.satisfies(req)
 
+  # Legacy pkg_resources normalized version numbers.
+  el = EggPackage('pyfoo-1.0.0_bar-py2.7-linux-x86_64.egg')
+  assert el.name == 'pyfoo'
+  assert el.raw_version == '1.0.0-bar'
+  assert el.py_version == '2.7'
+  assert el.platform == 'linux-x86_64'
+  for req in ('pyfoo', 'pyfoo==1.0.0-bar'):
+    assert el.satisfies(req)
+
   el = EggPackage('pytz-2012b-py2.6.egg')
   assert el.name == 'pytz'
-  assert el.raw_version == '2012b'
+  assert el.raw_version == '2012b0'
   assert el.py_version == '2.6'
   assert el.platform is None
 
@@ -50,3 +68,36 @@ def test_egg_packages():
 
   with pytest.raises(EggPackage.InvalidPackage):
     EggPackage('bar-py2.6.egg')
+
+
+def test_wheel_package():
+  wp = WheelPackage(
+      'file:///home/user/.pex/build/requests-2.12.1-py2.py3-none-any.whl'
+  )
+  assert wp.name == "requests"
+  assert wp.raw_version == "2.12.1"
+  assert wp._py_tag == "py2.py3"
+  assert wp._abi_tag == "none"
+  assert wp._arch_tag == "any"
+
+
+@pytest.mark.parametrize("package_name", [
+  "transmute_core-0.4.5-py2.py3-none-any-gobbledy.whl"
+])
+def test_invalid_wheel_package_name(package_name):
+  with pytest.raises(WheelPackage.InvalidPackage):
+    WheelPackage(package_name)
+
+
+def test_different_wheel_packages_should_be_equal():
+  pypi_package = WheelPackage(
+    'https://pypi.python.org/packages/9b/31/'
+    'e9925a2b9a06f97c3450bac6107928d3533bfe64ca5615442504104321e8/'
+    'requests-2.12.1-py2.py3-none-any.whl'
+  )
+  local_package = WheelPackage(
+    'https://internalpypi.mycompany.org/packages/9b/31/'
+    'e9925a2b9a06f97c3450bac6107928d3533bfe64ca5615442504104321e8/'
+    'requests-2.12.1-py2.py3-none-any.whl'
+  )
+  assert pypi_package == local_package

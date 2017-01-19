@@ -1,10 +1,12 @@
 import os
+import shlex
 from distutils import log
 
 from setuptools import Command
 
-from pex.bin.pex import build_pex, configure_clp
+from pex.bin.pex import build_pex, configure_clp, make_relative_to_root
 from pex.common import die
+from pex.compatibility import ConfigParser, StringIO, string
 from pex.variables import ENV
 
 
@@ -28,7 +30,7 @@ class bdist_pex(Command):  # noqa
     self.pex_args = ''
 
   def finalize_options(self):
-    self.pex_args = self.pex_args.split()
+    self.pex_args = shlex.split(self.pex_args)
 
   def _write(self, pex_builder, target, script=None):
     builder = pex_builder.clone()
@@ -37,6 +39,29 @@ class bdist_pex(Command):  # noqa
       builder.set_script(script)
 
     builder.build(target)
+
+  def parse_entry_points(self):
+    def split_and_strip(entry_point):
+      console_script, entry_point = entry_point.split('=', 2)
+      return console_script.strip(), entry_point.strip()
+
+    raw_entry_points = self.distribution.entry_points
+
+    if isinstance(raw_entry_points, string):
+      parser = ConfigParser()
+      parser.readfp(StringIO(raw_entry_points))
+      if parser.has_section('console_scripts'):
+        return dict(parser.items('console_scripts'))
+    elif isinstance(raw_entry_points, dict):
+      try:
+        return dict(split_and_strip(script)
+            for script in raw_entry_points.get('console_scripts', []))
+      except ValueError:
+        pass
+    elif raw_entry_points is not None:
+      die('When entry_points is provided, it must be a string or dict.')
+
+    return {}
 
   def run(self):
     name = self.distribution.get_name()
@@ -50,24 +75,22 @@ class bdist_pex(Command):  # noqa
 
     options, reqs = parser.parse_args(self.pex_args)
 
+    # Update cache_dir with pex_root in case this is being called directly.
+    if options.cache_dir:
+      options.cache_dir = make_relative_to_root(options.cache_dir)
+    options.interpreter_cache_dir = make_relative_to_root(options.interpreter_cache_dir)
+
     if options.entry_point or options.script:
       die('Must not specify entry_point or script to --pex-args')
 
     reqs = [package_dir] + reqs
 
-    with ENV.patch(PEX_VERBOSE=str(options.verbosity)):
+    with ENV.patch(PEX_VERBOSE=str(options.verbosity), PEX_ROOT=options.pex_root):
       pex_builder = build_pex(reqs, options, options_builder)
 
-    def split_and_strip(entry_point):
-      console_script, entry_point = entry_point.split('=', 2)
-      return console_script.strip(), entry_point.strip()
+    console_scripts = self.parse_entry_points()
 
-    try:
-      console_scripts = dict(split_and_strip(script)
-          for script in self.distribution.entry_points.get('console_scripts', []))
-    except ValueError:
-      console_scripts = {}
-
+    target = os.path.join(self.bdist_dir, name + '-' + version + '.pex')
     if self.bdist_all:
       # Write all entry points into unversioned pex files.
       for script_name in console_scripts:
@@ -76,7 +99,6 @@ class bdist_pex(Command):  # noqa
         self._write(pex_builder, target, script=script_name)
     elif name in console_scripts:
       # The package has a namesake entry point, so use it.
-      target = os.path.join(self.bdist_dir, name + '-' + version + '.pex')
       log.info('Writing %s to %s' % (name, target))
       self._write(pex_builder, target, script=name)
     else:

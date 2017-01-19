@@ -22,9 +22,9 @@ import zipimport
 import pkg_resources
 
 if sys.version_info >= (3, 3) and sys.implementation.name == "cpython":
-  import importlib._bootstrap as importlib_bootstrap
+  import importlib.machinery as importlib_machinery
 else:
-  importlib_bootstrap = None
+  importlib_machinery = None
 
 
 class ChainedFinder(object):
@@ -214,8 +214,8 @@ def register_finders():
   # append the wheel finder
   _add_finder(pkgutil.ImpImporter, find_wheels_on_path)
 
-  if importlib_bootstrap is not None:
-    _add_finder(importlib_bootstrap.FileFinder, find_wheels_on_path)
+  if importlib_machinery is not None:
+    _add_finder(importlib_machinery.FileFinder, find_wheels_on_path)
 
   __PREVIOUS_FINDER = previous_finder
 
@@ -230,15 +230,15 @@ def unregister_finders():
   pkg_resources.register_finder(zipimport.zipimporter, __PREVIOUS_FINDER)
   _remove_finder(pkgutil.ImpImporter, find_wheels_on_path)
 
-  if importlib_bootstrap is not None:
-    _remove_finder(importlib_bootstrap.FileFinder, find_wheels_on_path)
+  if importlib_machinery is not None:
+    _remove_finder(importlib_machinery.FileFinder, find_wheels_on_path)
 
   __PREVIOUS_FINDER = None
 
 
 def get_script_from_egg(name, dist):
   """Returns location, content of script in distribution or (None, None) if not there."""
-  if name in dist.metadata_listdir('scripts'):
+  if dist.metadata_isdir('scripts') and name in dist.metadata_listdir('scripts'):
     return (
         os.path.join(dist.egg_info, 'scripts', name),
         dist.get_metadata('scripts/%s' % name).replace('\r\n', '\n').replace('\r', '\n'))

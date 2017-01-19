@@ -42,9 +42,20 @@ INVALID_OPTIONS = 103
 INVALID_ENTRY_POINT = 104
 
 
-def log(msg, v=False):
-  if v:
-    print(msg, file=sys.stderr)
+class Logger(object):
+  def _default_logger(self, msg, v):
+    if v:
+      print(msg, file=sys.stderr)
+
+  _LOGGER = _default_logger
+
+  def __call__(self, msg, v):
+    self._LOGGER(msg, v)
+
+  def set_logger(self, logger_callback):
+    self._LOGGER = logger_callback
+
+log = Logger()
 
 
 def parse_bool(option, opt_str, _, parser):
@@ -57,7 +68,7 @@ def increment_verbosity(option, opt_str, _, parser):
 
 
 def process_disable_cache(option, option_str, option_value, parser):
-  setattr(parser.values, option.dest, [])
+  setattr(parser.values, option.dest, None)
 
 
 def process_pypi_option(option, option_str, option_value, parser, builder):
@@ -159,9 +170,9 @@ def configure_clp_pex_resolution(parser, builder):
   group.add_option(
       '--cache-dir',
       dest='cache_dir',
-      default=os.path.expanduser('~/.pex/build'),
+      default='{pex_root}/build',
       help='The local cache directory to use for speeding up requirement '
-           'lookups. [Default: %default]')
+           'lookups. [Default: ~/.pex/build]')
 
   group.add_option(
       '--cache-ttl',
@@ -266,9 +277,9 @@ def configure_clp_pex_environment(parser):
   group.add_option(
       '--interpreter-cache-dir',
       dest='interpreter_cache_dir',
-      default=os.path.expanduser('~/.pex/interpreters'),
+      default='{pex_root}/interpreters',
       help='The interpreter cache to use for keeping track of interpreter dependencies '
-           'for the pex tool. [Default: %default]')
+           'for the pex tool. [Default: ~/.pex/interpreters]')
 
   parser.add_option_group(group)
 
@@ -330,12 +341,29 @@ def configure_clp():
            'times.')
 
   parser.add_option(
+      '--constraints',
+      dest='constraint_files',
+      metavar='FILE',
+      default=[],
+      type=str,
+      action='append',
+      help='Add constraints from the given constraints file.  This option can be used multiple '
+           'times.')
+
+  parser.add_option(
       '-v',
       dest='verbosity',
       default=0,
       action='callback',
       callback=increment_verbosity,
       help='Turn on logging verbosity, may be specified multiple times.')
+
+  parser.add_option(
+      '--pex-root',
+      dest='pex_root',
+      default=None,
+      help='Specify the pex root used in this invocation of pex. [Default: ~/.pex]'
+  )
 
   parser.add_option(
       '--help-variables',
@@ -459,6 +487,15 @@ def build_pex(args, options, resolver_option_builder):
   for requirements_txt in options.requirement_files:
     resolvables.extend(requirements_from_file(requirements_txt, resolver_option_builder))
 
+  # pip states the constraints format is identical tor requirements
+  # https://pip.pypa.io/en/stable/user_guide/#constraints-files
+  for constraints_txt in options.constraint_files:
+    constraints = []
+    for r in requirements_from_file(constraints_txt, resolver_option_builder):
+      r.is_constraint = True
+      constraints.append(r)
+    resolvables.extend(constraints)
+
   resolver_kwargs = dict(interpreter=interpreter, platform=options.platform)
 
   if options.cache_dir:
@@ -491,11 +528,15 @@ def build_pex(args, options, resolver_option_builder):
   return pex_builder
 
 
-def main():
+def make_relative_to_root(path):
+  """Update options so that defaults are user relative to specified pex_root."""
+  return os.path.normpath(path.format(pex_root=ENV.PEX_ROOT))
+
+
+def main(args=None):
+  args = args or sys.argv[1:]
   parser, resolver_options_builder = configure_clp()
 
-  # split arguments early because optparse is dumb
-  args = sys.argv[1:]
   try:
     separator = args.index('--')
     args, cmdline = args[:separator], args[separator + 1:]
@@ -503,6 +544,15 @@ def main():
     args, cmdline = args, []
 
   options, reqs = parser.parse_args(args=args)
+  if options.pex_root:
+    ENV.set('PEX_ROOT', options.pex_root)
+  else:
+    options.pex_root = ENV.PEX_ROOT  # If option not specified fallback to env variable.
+
+  # Don't alter cache if it is disabled.
+  if options.cache_dir:
+    options.cache_dir = make_relative_to_root(options.cache_dir)
+  options.interpreter_cache_dir = make_relative_to_root(options.interpreter_cache_dir)
 
   with ENV.patch(PEX_VERBOSE=str(options.verbosity)):
     with TRACER.timed('Building pex'):

@@ -1,11 +1,14 @@
 # Copyright 2015 Pants project contributors (see CONTRIBUTORS.md).
 # Licensed under the Apache License, Version 2.0 (see LICENSE).
 
+import os.path
+
 import pytest
 
+from pex.bin.pex import make_relative_to_root
 from pex.orderedset import OrderedSet
 from pex.pex_info import PexInfo
-from pex.variables import Variables
+from pex.variables import ENV, Variables
 
 
 def make_pex_info(requirements):
@@ -45,8 +48,17 @@ def test_from_empty_env():
   assert_same_info(PexInfo(info=info), PexInfo.from_env(env=environ))
 
 
+def test_make_relative():
+  with ENV.patch(PEX_ROOT='/pex_root'):
+    assert '/pex_root/interpreters' == make_relative_to_root('{pex_root}/interpreters')
+
+    #Verify the user can specify arbitrary absolute paths.
+    assert '/tmp/interpreters' == make_relative_to_root('/tmp/interpreters')
+
+
 def test_from_env():
-  environ = dict(PEX_ROOT='/pex_root',
+  pex_root = os.path.realpath('/pex_root')
+  environ = dict(PEX_ROOT=pex_root,
                  PEX_MODULE='entry:point',
                  PEX_SCRIPT='script.sh',
                  PEX_FORCE_LOCAL='true',
@@ -54,7 +66,7 @@ def test_from_env():
                  PEX_IGNORE_ERRORS='true',
                  PEX_ALWAYS_CACHE='true')
 
-  info = dict(pex_root='/pex_root',
+  info = dict(pex_root=pex_root,
               entry_point='entry:point',
               script='script.sh',
               zip_safe=False,

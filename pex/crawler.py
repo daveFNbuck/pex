@@ -7,7 +7,6 @@ import os
 import re
 import threading
 import traceback
-import xml.sax.saxutils
 
 from .compatibility import PY3
 from .http import Context
@@ -23,6 +22,15 @@ else:
   from urlparse import urlparse
 
 
+def unescape(s):
+  """Unescapes html. Taken from https://wiki.python.org/moin/EscapingHtml"""
+  s = s.replace("&lt;", "<")
+  s = s.replace("&gt;", ">")
+  # this has to be last:
+  s = s.replace("&amp;", "&")
+  return s
+
+
 class PageParser(object):
   """A helper class to extract and differentiate ordinary and download links from webpages."""
 
@@ -35,8 +43,7 @@ class PageParser(object):
   def href_match_to_url(cls, match):
     def pick(group):
       return '' if group is None else group
-    return xml.sax.saxutils.unescape(
-      pick(match.group(1)) or pick(match.group(2)) or pick(match.group(3)))
+    return unescape(pick(match.group(1)) or pick(match.group(2)) or pick(match.group(3)))
 
   @classmethod
   def rel_links(cls, page):
@@ -78,11 +85,11 @@ class Crawler(object):
   @classmethod
   def crawl_local(cls, link):
     try:
-      dirents = os.listdir(link.path)
+      dirents = os.listdir(link.local_path)
     except OSError as e:
-      TRACER.log('Failed to read %s: %s' % (link.path, e), V=1)
+      TRACER.log('Failed to read %s: %s' % (link.local_path, e), V=1)
       return set(), set()
-    files, dirs = partition([os.path.join(link.path, fn) for fn in dirents], os.path.isdir)
+    files, dirs = partition([os.path.join(link.local_path, fn) for fn in dirents], os.path.isdir)
     return set(map(Link.from_filename, files)), set(map(Link.from_filename, dirs))
 
   @classmethod
